@@ -4,7 +4,16 @@ import { toast } from "sonner"
 import { useUserStore } from "@/store/userStore"
 
 export default function Orders() {
-  const { users, isLoading, fetchUsers, deleteUser } = useUserStore()
+  const { 
+    users, 
+    roles, 
+    isLoading, 
+    fetchUsers, 
+    fetchRoles, 
+    deleteUser, 
+    addRoleToUser, 
+    removeRoleFromUser 
+  } = useUserStore()
   const [search, setSearch] = useState("")
 
   useEffect(() => {
@@ -13,7 +22,16 @@ export default function Orders() {
     })
   }, [search, fetchUsers])
 
+  useEffect(() => {
+    fetchRoles().catch((err) => {
+      console.error("Failed to fetch roles:", err)
+    })
+  }, [fetchRoles])
+
   const handleDelete = async (id: string) => {
+    const isConfirmed = window.confirm("Are you sure you want to delete this user?")
+    if (!isConfirmed) return
+
     const toastId = toast.loading("Deleting user...")
     try {
       await deleteUser(id)
@@ -23,8 +41,23 @@ export default function Orders() {
     }
   }
 
+  const handleToggleRole = async (userId: string, roleId: string, hasRole: boolean) => {
+    const toastId = toast.loading(hasRole ? "Removing role..." : "Assigning role...")
+    try {
+      if (hasRole) {
+        await removeRoleFromUser(userId, roleId)
+        toast.success("Role removed successfully!", { id: toastId })
+      } else {
+        await addRoleToUser(userId, roleId)
+        toast.success("Role assigned successfully!", { id: toastId })
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update role", { id: toastId })
+    }
+  }
+
   return (
-    <div className="space-y-6 text-foreground">
+    <div className="space-y-6 text-foreground animate-fadeIn">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -63,21 +96,60 @@ export default function Orders() {
                   <th className="p-4">First Name</th>
                   <th className="p-4">Last Name</th>
                   <th className="p-4">Phone Number</th>
+                  <th className="p-4">Roles</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-accent/40 transition-colors">
+                  <tr key={u.userId} className="hover:bg-accent/40 transition-colors">
                     <td className="p-4 font-semibold text-foreground">{u.userName}</td>
                     <td className="p-4 text-muted-foreground">{u.email}</td>
                     <td className="p-4 text-foreground">{u.firstName || "-"}</td>
                     <td className="p-4 text-foreground">{u.lastName || "-"}</td>
                     <td className="p-4 text-muted-foreground">{u.phoneNumber || "-"}</td>
+                    <td className="p-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {roles.map((role) => {
+                          const hasRole = u.userRoles?.some((r) => r.id === role.id) || false
+                          return (
+                            <button
+                              key={role.id}
+                              onClick={() => handleToggleRole(u.userId, role.id, hasRole)}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-all border ${
+                                hasRole
+                                  ? role.name.toLowerCase() === "admin"
+                                    ? "bg-indigo-600/10 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400 border-indigo-500/20 hover:bg-indigo-600/20 cursor-pointer"
+                                    : "bg-emerald-600/10 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-600/20 cursor-pointer"
+                                  : "bg-muted/40 text-muted-foreground hover:bg-muted/80 border-transparent cursor-pointer"
+                              }`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${
+                                hasRole
+                                  ? role.name.toLowerCase() === "admin"
+                                    ? "bg-indigo-500 animate-pulse"
+                                    : "bg-emerald-500 animate-pulse"
+                                  : "bg-muted-foreground"
+                              }`} />
+                              {role.name}
+                            </button>
+                          )
+                        })}
+                        {u.userRoles?.filter(r => !roles.some(sysRole => sysRole.id === r.id)).map((role) => (
+                          <div
+                            key={role.id}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-600/15 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400 border border-violet-500/20 shadow-sm"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                            {role.name}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
                     <td className="p-4 text-right">
                       <button
-                        onClick={() => handleDelete(u.id)}
-                        className="inline-flex rounded-lg p-1.5 hover:bg-destructive/10 text-destructive transition-colors"
+                        onClick={() => handleDelete(u.userId)}
+                        className="inline-flex rounded-lg p-1.5 hover:bg-destructive/10 text-destructive transition-colors cursor-pointer"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -92,3 +164,4 @@ export default function Orders() {
     </div>
   )
 }
+

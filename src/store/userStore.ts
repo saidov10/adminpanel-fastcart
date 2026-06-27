@@ -1,25 +1,37 @@
 import { create } from "zustand"
 import api from "@/lib/api"
 
+export interface Role {
+  id: string
+  name: string
+}
+
 export interface UserProfile {
   id: string
+  userId: string
   userName: string
   email: string
   firstName?: string
   lastName?: string
   phoneNumber?: string
+  userRoles?: Role[]
 }
 
 interface UserState {
   users: UserProfile[]
+  roles: Role[]
   totalCount: number
   isLoading: boolean
   fetchUsers: (query?: string) => Promise<void>
+  fetchRoles: () => Promise<void>
   deleteUser: (id: string) => Promise<void>
+  addRoleToUser: (userId: string, roleId: string) => Promise<void>
+  removeRoleFromUser: (userId: string, roleId: string) => Promise<void>
 }
 
 export const useUserStore = create<UserState>((set) => ({
   users: [],
+  roles: [],
   totalCount: 0,
   isLoading: false,
   fetchUsers: async (query = "") => {
@@ -33,7 +45,7 @@ export const useUserStore = create<UserState>((set) => ({
         }
       })
       const rawData = response.data.data || response.data
-      let extracted: UserProfile[] = []
+      let extracted: any[] = []
       if (Array.isArray(rawData)) {
         extracted = rawData
       } else if (rawData && typeof rawData === "object") {
@@ -42,10 +54,27 @@ export const useUserStore = create<UserState>((set) => ({
           extracted = items
         }
       }
-      const total = response.data.totalRecord || response.data.totalCount || extracted.length
-      set({ users: extracted, totalCount: total, isLoading: false })
+      
+      // Ensure all users have both id and userId defined
+      const mappedUsers: UserProfile[] = extracted.map((u: any) => ({
+        ...u,
+        id: u.userId || u.id,
+        userId: u.userId || u.id
+      }))
+
+      const total = response.data.totalRecord || response.data.totalCount || mappedUsers.length
+      set({ users: mappedUsers, totalCount: total, isLoading: false })
     } catch (err) {
       set({ isLoading: false })
+      throw err
+    }
+  },
+  fetchRoles: async () => {
+    try {
+      const response = await api.get("/UserProfile/get-user-roles")
+      const rawData = response.data.data || response.data || []
+      set({ roles: rawData })
+    } catch (err) {
       throw err
     }
   },
@@ -55,7 +84,7 @@ export const useUserStore = create<UserState>((set) => ({
         params: { id }
       })
       set((state) => {
-        const newUsers = state.users.filter((u) => u.id !== id)
+        const newUsers = state.users.filter((u) => u.userId !== id && u.id !== id)
         return {
           users: newUsers,
           totalCount: Math.max(0, state.totalCount - 1)
@@ -64,5 +93,54 @@ export const useUserStore = create<UserState>((set) => ({
     } catch (err) {
       throw err
     }
+  },
+  addRoleToUser: async (userId, roleId) => {
+    try {
+      await api.post("/UserProfile/addrole-from-user", null, {
+        params: { UserId: userId, RoleId: roleId }
+      })
+      // Update local store state reactively
+      set((state) => {
+        const newUsers = state.users.map((u) => {
+          if (u.userId === userId) {
+            const roleObj = state.roles.find((r) => r.id === roleId)
+            const exists = u.userRoles?.some((r) => r.id === roleId)
+            if (roleObj && !exists) {
+              return {
+                ...u,
+                userRoles: [...(u.userRoles || []), roleObj]
+              }
+            }
+          }
+          return u
+        })
+        return { users: newUsers }
+      })
+    } catch (err) {
+      throw err
+    }
+  },
+  removeRoleFromUser: async (userId, roleId) => {
+    try {
+      await api.delete("/UserProfile/remove-role-from-user", {
+        params: { UserId: userId, RoleId: roleId }
+      })
+      // Update local store state reactively
+      set((state) => {
+        const newUsers = state.users.map((u) => {
+          if (u.userId === userId) {
+            return {
+              ...u,
+              userRoles: (u.userRoles || []).filter((r) => r.id !== roleId)
+            }
+          }
+          return u
+        })
+        return { users: newUsers }
+      })
+    } catch (err) {
+      throw err
+    }
   }
 }))
+
